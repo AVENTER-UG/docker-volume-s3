@@ -6,7 +6,7 @@ import (
 )
 
 // Read
-func (d *rbdDriver) configure() {
+func (d *S3fsDriver) configure() {
 
 	// set default confs:
 

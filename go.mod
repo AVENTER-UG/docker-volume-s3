@@ -1,4 +1,4 @@
-module github.com/AVENTER-UG/s3vol
+module github.com/AVENTER-UG/docker-volume-s3
 
 go 1.14
 
