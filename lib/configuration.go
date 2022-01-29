@@ -1,4 +1,4 @@
-package dockerVolumeRbd
+package dockerVolumeS3
 
 import (
 	"os"
