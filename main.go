@@ -29,7 +29,7 @@ func main() {
 		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
-	volDriver, err := dockerVolumeS3.NewDriver(c)
+	volDriver, err := dockerVolumeS3.NewDriver()
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -37,5 +37,5 @@ func main() {
 	h := volume.NewHandler(volDriver)
 	logrus.Infof("plugin(s3) version(%s) started with log level(%s) attending socket(%s)", dockerVolumeS3Version, logLevel, socketAddress)
 	logrus.Error(h.ServeUnix(socketAddress, 0))
-	logrus.Error(h.ServeUnix(c.String("socket"), 0))
+	logrus.Error(h.ServeUnix(socketAddress, 0))
 }

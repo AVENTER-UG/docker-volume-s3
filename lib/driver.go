@@ -1,4 +1,4 @@
-package dockerVolumesS3
+package dockerVolumeS3
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/minio/minio-go/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
 )
 
 const (
@@ -26,19 +25,10 @@ const (
 
 //S3fsDriver is a volume driver over s3fs
 type S3fsDriver struct {
-	Endpoint           string
-	UseSSL             bool
-	AccessKey          string
-	SecretKey          string
-	Region             string
-	RootMount          string
-	ReplaceUnderscores bool
-	ConfigBucketName   string
-	Defaults           map[string]string
-	s3client           *minio.Client
-	s3fspath           string
-	mounts             map[string]int
-	mountsLock         sync.Mutex
+	s3client   *minio.Client
+	mounts     map[string]int
+	mountsLock sync.Mutex
+	conf       map[string]string // ceph config params
 }
 
 //VolConfig represents the configuration of a volume
@@ -49,8 +39,32 @@ type VolConfig struct {
 }
 
 //NewDriver creates a new S3FS driver
-func NewDriver(c *cli.Context) (*S3fsDriver, error) {
-	s3fspath := c.String("s3fspath")
+func NewDriver() (*S3fsDriver, error) {
+
+	driver := &S3fsDriver{
+		mounts: make(map[string]int),
+		conf:   make(map[string]string),
+	}
+
+	driver.configure()
+
+	logLevel := "3"
+
+	switch logLevel {
+	case "3":
+		log.SetLevel(log.DebugLevel)
+		break
+	case "2":
+		log.SetLevel(log.InfoLevel)
+		break
+	case "1":
+		log.SetLevel(log.WarnLevel)
+		break
+	default:
+		log.SetLevel(log.ErrorLevel)
+	}
+
+	s3fspath := driver.conf["s3fspath"]
 	if len(s3fspath) == 0 {
 		path := os.Getenv("PATH")
 		paths := strings.Split(path, ":")
@@ -78,7 +92,8 @@ func NewDriver(c *cli.Context) (*S3fsDriver, error) {
 		log.WithField("command", "driver").Errorf("could not get s3fs path: provide s3fs path or install it")
 		return nil, fmt.Errorf("could not get s3fs path: provide s3fs path or install it")
 	}
-	u, err := url.Parse(c.String("endpoint"))
+	driver.conf["s3fspath"] = s3fspath
+	u, err := url.Parse(driver.conf["endpoint"])
 	if err != nil {
 		log.WithField("command", "driver").Errorf("could not parse endpoint: %s", err)
 		return nil, fmt.Errorf("could not parse enpoint: %s", err)
@@ -92,14 +107,14 @@ func NewDriver(c *cli.Context) (*S3fsDriver, error) {
 	if u.Scheme == "http" {
 		usessl = false
 	}
-	accesskey := c.String("accesskey")
-	secretkey := c.String("secretkey")
-	region := c.String("region")
-	replaceunderscores := c.Bool("replaceunderscores")
-	configbucketname := c.String("configbucket")
-	mount := c.String("mount")
+	accesskey := driver.conf["accesskey"]
+	secretkey := driver.conf["secretkey"]
+	region := driver.conf["region"]
+	replaceunderscores := driver.conf["replaceunderscores"]
+	configbucketname := driver.conf["configbucketname"]
+	mount := driver.conf["mount"]
 	mount = strings.TrimRight(mount, "/")
-	defaults, err := parseOptions(c.String("defaults"))
+	defaults, err := parseOptions(driver.conf["options"])
 	if err != nil {
 		log.WithField("command", "driver").Errorf("could not parse options: %s", err)
 		return nil, fmt.Errorf("could not parse options: %s", err)
@@ -115,19 +130,6 @@ func NewDriver(c *cli.Context) (*S3fsDriver, error) {
 	defaults["endpoint"] = region
 	// default use path request style for minio
 	defaults["use_path_request_style"] = "true"
-	driver := &S3fsDriver{
-		Endpoint:           endpoint,
-		UseSSL:             usessl,
-		AccessKey:          accesskey,
-		SecretKey:          secretkey,
-		Region:             region,
-		RootMount:          mount,
-		ReplaceUnderscores: replaceunderscores,
-		ConfigBucketName:   configbucketname,
-		Defaults:           defaults,
-		s3fspath:           s3fspath,
-		mounts:             make(map[string]int),
-	}
 	log.WithField("command", "driver").Infof("endpoint: %s", endpoint)
 	log.WithField("command", "driver").Infof("use ssl: %v", usessl)
 	log.WithField("command", "driver").Infof("access key: %s", accesskey)
@@ -135,7 +137,7 @@ func NewDriver(c *cli.Context) (*S3fsDriver, error) {
 	log.WithField("command", "driver").Infof("replace underscores: %v", replaceunderscores)
 	log.WithField("command", "driver").Infof("mount: %s", mount)
 	log.WithField("command", "driver").Infof("config bucket: %s", configbucketname)
-	log.WithField("command", "driver").Infof("default options: %s", optionsToString(defaults))
+	log.WithField("command", "driver").Infof("default options: %s", defaults)
 	// get a s3 client
 	clt, err := minio.NewWithRegion(endpoint, accesskey, secretkey, usessl, region)
 	if err != nil {
@@ -178,7 +180,7 @@ func (d *S3fsDriver) Create(req *volume.CreateRequest) error {
 	log.WithField("command", "driver").WithField("method", "create").Debugf("request: %+v", req)
 	// check bucket name
 	bucket := req.Name
-	if strings.Contains(bucket, "_") && d.ReplaceUnderscores {
+	if strings.Contains(bucket, "_") && d.conf["replaceunderscores"] == "true" {
 		bucket = strings.ReplaceAll(bucket, "_", "-")
 	}
 	// check that the bucket exists
@@ -187,50 +189,28 @@ func (d *S3fsDriver) Create(req *volume.CreateRequest) error {
 		log.WithField("command", "driver").WithField("method", "create").Errorf("could check bucket '%s': %s", bucket, err)
 		return fmt.Errorf("could check bucket '%s': %s", bucket, err)
 	}
-	volConf := VolConfig{
-		Name:    req.Name,
-		Bucket:  bucket,
-		Options: req.Options,
-	}
-	// add volume to config
-	err = d.addVolumeConfig(&volConf)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "create").Errorf("could add volume config: %s", err)
-		return fmt.Errorf("could add volume config: %s", err)
-	}
 	return nil
 }
 
 //List lists volumes
 func (d *S3fsDriver) List() (*volume.ListResponse, error) {
 	log.WithField("command", "driver").WithField("method", "list").Debugf("list")
-	// get volumes config
-	vols, err := d.getVolumesConfig()
-	if err != nil {
-		log.WithField("command", "driver").Errorf("could not get volumes config: %s", err)
-		return nil, fmt.Errorf("could not get volumes config: %s", err)
-	}
 	// get bucket infos
 	bucketInfos, err := d.s3client.ListBuckets()
 	if err != nil {
 		log.WithField("command", "driver").Errorf("could not get bucket infos: %s", err)
 		return nil, fmt.Errorf("could not get bucket infos: %s", err)
 	}
-	resp := make([]*volume.Volume, len(vols))
-	for i, v := range vols {
+	resp := make([]*volume.Volume, len(bucketInfos))
+	for i, v := range bucketInfos {
 		// search for the bucket creation date
 		creation := ""
-		for _, b := range bucketInfos {
-			if v.Bucket == b.Name {
-				creation = b.CreationDate.UTC().Format(time.RFC3339)
-				break
-			}
-		}
 		resp[i] = &volume.Volume{
 			Name:       v.Name,
-			Mountpoint: fmt.Sprintf("%s/%s", d.RootMount, v.Name),
+			Mountpoint: fmt.Sprintf("%s/%s", d.conf["rootmount"], v.Name),
 			CreatedAt:  creation,
 		}
+		log.Info(v.Name)
 	}
 	return &volume.ListResponse{Volumes: resp}, nil
 }
@@ -238,11 +218,6 @@ func (d *S3fsDriver) List() (*volume.ListResponse, error) {
 //Get gets a volume
 func (d *S3fsDriver) Get(req *volume.GetRequest) (*volume.GetResponse, error) {
 	log.WithField("command", "driver").WithField("method", "get").Debugf("request: %+v", req)
-	vol, err := d.getVolumeConfig(req.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "get").Warnf("could not get volume config for '%s': %s", req.Name, err)
-		return nil, fmt.Errorf("could not get volume config for '%s': %s", req.Name, err)
-	}
 	// get bucket infos
 	bucketInfos, err := d.s3client.ListBuckets()
 	if err != nil {
@@ -252,15 +227,15 @@ func (d *S3fsDriver) Get(req *volume.GetRequest) (*volume.GetResponse, error) {
 	// get creation date
 	creation := ""
 	for _, b := range bucketInfos {
-		if vol.Bucket == b.Name {
+		if req.Name == b.Name {
 			creation = b.CreationDate.UTC().Format(time.RFC3339)
 			break
 		}
 	}
 	return &volume.GetResponse{
 		Volume: &volume.Volume{
-			Name:       vol.Name,
-			Mountpoint: fmt.Sprintf("%s/%s", d.RootMount, vol.Name),
+			Name:       req.Name,
+			Mountpoint: fmt.Sprintf("%s/%s", d.conf["rootmount"], req.Name),
 			CreatedAt:  creation,
 		},
 	}, nil
@@ -269,12 +244,6 @@ func (d *S3fsDriver) Get(req *volume.GetRequest) (*volume.GetResponse, error) {
 //Remove removes a volume
 func (d *S3fsDriver) Remove(req *volume.RemoveRequest) error {
 	log.WithField("command", "driver").WithField("method", "remove").Debugf("request: %+v", req)
-	// get volume config
-	volConfig, err := d.getVolumeConfig(req.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "remove").Errorf("could not get vol infos: %s", err)
-		return fmt.Errorf("could not get vol infos: %s", err)
-	}
 	// check bucket
 	buckets, err := d.s3client.ListBuckets()
 	if err != nil {
@@ -282,8 +251,8 @@ func (d *S3fsDriver) Remove(req *volume.RemoveRequest) error {
 		return fmt.Errorf("could not list buckets: %s", err)
 	}
 	for _, bucket := range buckets {
-		if bucket.Name == volConfig.Bucket {
-			log.WithField("command", "driver").WithField("method", "remove").Infof("removing bucket: %s", volConfig.Bucket)
+		if bucket.Name == req.Name {
+			log.WithField("command", "driver").WithField("method", "remove").Infof("removing bucket: %s", req.Name)
 			// empty bucket
 			// channel of objects to remove
 			objectsCh := make(chan string)
@@ -291,22 +260,22 @@ func (d *S3fsDriver) Remove(req *volume.RemoveRequest) error {
 			go func() {
 				defer close(objectsCh)
 				// List all objects from a bucket
-				for object := range d.s3client.ListObjects(volConfig.Bucket, "", true, nil) {
+				for object := range d.s3client.ListObjects(req.Name, "", true, nil) {
 					if object.Err != nil {
-						log.WithField("command", "driver").WithField("method", "remove").Errorf("removing object from bucket '%s': %s", volConfig.Bucket, object.Err)
+						log.WithField("command", "driver").WithField("method", "remove").Errorf("removing object from bucket '%s': %s", req.Name, object.Err)
 						break
 					}
 					objectsCh <- object.Key
 				}
 			}()
 			// remove the obtained objects from channel
-			for rErr := range d.s3client.RemoveObjects(volConfig.Bucket, objectsCh) {
-				log.WithField("command", "driver").WithField("method", "remove").Errorf("error emptying bucket '%s': %s", volConfig.Bucket, rErr)
+			for rErr := range d.s3client.RemoveObjects(req.Name, objectsCh) {
+				log.WithField("command", "driver").WithField("method", "remove").Errorf("error emptying bucket '%s': %s", req.Name, rErr)
 				// don't exist: try to remove the bucket anyway
 				break
 			}
 			// remove bucket
-			err = d.s3client.RemoveBucket(volConfig.Bucket)
+			err = d.s3client.RemoveBucket(req.Name)
 			if err != nil {
 				log.WithField("command", "driver").WithField("method", "remove").Errorf("could not remove bucket: %s", err)
 				return fmt.Errorf("could not remove bucket: %s", err)
@@ -314,57 +283,33 @@ func (d *S3fsDriver) Remove(req *volume.RemoveRequest) error {
 			break
 		}
 	}
-	// remove config
-	log.WithField("command", "driver").WithField("method", "remove").Infof("removing config: %s", volConfig.Name)
-	err = d.removeVolumeConfig(volConfig.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "remove").Errorf("could not remove volume config: %s", err)
-		return fmt.Errorf("could not remove volume config: %s", err)
-	}
 	return nil
 }
 
 //Path provides the path
 func (d *S3fsDriver) Path(req *volume.PathRequest) (*volume.PathResponse, error) {
 	log.WithField("command", "driver").WithField("method", "path").Debugf("request: %+v", req)
-	// get volume config
-	volConfig, err := d.getVolumeConfig(req.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "remove").Errorf("could not get vol infos: %s", err)
-		return nil, fmt.Errorf("could not get vol infos: %s", err)
-	}
-	return &volume.PathResponse{Mountpoint: fmt.Sprintf("%s/%s", d.RootMount, volConfig.Name)}, nil
+	return &volume.PathResponse{Mountpoint: fmt.Sprintf("%s/%s", d.conf["rootmount"], req.Name)}, nil
 }
 
 //Mount mounts a volume
 func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, error) {
 	log.WithField("command", "driver").WithField("method", "mount").Debugf("request: %+v", req)
-	// get volume configurtion
-	// get volume config
-	volConfig, err := d.getVolumeConfig(req.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "mount").Errorf("could not get vol infos: %s", err)
-		return nil, fmt.Errorf("could not get vol infos: %s", err)
-	}
+
 	// generate mount path
-	path := fmt.Sprintf("%s/%s", d.RootMount, volConfig.Name)
-	// check if already mounted
+	path := fmt.Sprintf("%s/%s", d.conf["rootmount"], req.Name)
 	d.mountsLock.Lock()
 	defer d.mountsLock.Unlock()
-	if _, ok := d.mounts[volConfig.Name]; ok {
-		d.mounts[volConfig.Name] = 0
+	if _, ok := d.mounts[req.Name]; ok {
+		d.mounts[req.Name] = 0
 	}
-	if d.mounts[volConfig.Name] > 0 {
-		d.mounts[volConfig.Name]++
-		log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", volConfig.Name, d.mounts[volConfig.Name])
+	if d.mounts[req.Name] > 0 {
+		d.mounts[req.Name]++
+		log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
 		return &volume.MountResponse{Mountpoint: path}, nil
 	}
-	// merging driver options and volume options
-	// volume options have precedence
-	options := d.Defaults
-	for k, v := range volConfig.Options {
-		options[k] = v
-	}
+
+	options := d.conf["options"]
 	// create path if not exists
 	info, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -385,7 +330,7 @@ func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, err
 		}
 	}
 	// generate command
-	cmd := fmt.Sprintf("%s %s %s -o %s", d.s3fspath, volConfig.Bucket, path, optionsToString(options))
+	cmd := fmt.Sprintf("%s %s %s -o %s", d.conf["s3fspath"], req.Name, path, options)
 	log.WithField("command", "driver").WithField("method", "mount").Infof("cmd: %s", cmd)
 	err = exec.Command("sh", "-c", cmd).Run()
 	if err != nil {
@@ -403,46 +348,30 @@ func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, err
 			return nil, fmt.Errorf("error executing the mount command: %s", err)
 		}
 	}
-	d.mounts[volConfig.Name]++
-	log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", volConfig.Name, d.mounts[volConfig.Name])
+	d.mounts[req.Name]++
+	log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
 	return &volume.MountResponse{Mountpoint: path}, nil
 }
 
 //Unmount unmounts a volume
 func (d *S3fsDriver) Unmount(req *volume.UnmountRequest) error {
 	log.WithField("command", "driver").WithField("method", "unmount").Debugf("request: %+v", req)
-	// get volume configurtion
-	// get volume config
-	volConfig, err := d.getVolumeConfig(req.Name)
-	if err != nil {
-		log.WithField("command", "driver").WithField("method", "unmount").Errorf("could not get vol infos: %s", err)
-		return fmt.Errorf("could not get vol infos: %s", err)
-	}
 	// aquire mount lock
 	d.mountsLock.Lock()
 	defer d.mountsLock.Unlock()
-	// check that volume was mounted at least once
-	if _, ok := d.mounts[volConfig.Name]; !ok {
-		log.WithField("command", "driver").WithField("method", "unmount").Errorf("could not find mount infos for %s", volConfig.Name)
-		return fmt.Errorf("could not find mount infos for %s", volConfig.Name)
-	}
-	if d.mounts[volConfig.Name] <= 0 {
-		log.WithField("command", "driver").WithField("method", "unmount").Errorf("volume %s is apparently not mouted", volConfig.Name)
-		return fmt.Errorf("volume %s is apparently not mouted", volConfig.Name)
-	}
 	// check if other container still have this mounted
-	if d.mounts[volConfig.Name] > 1 {
-		d.mounts[volConfig.Name]--
-		log.WithField("command", "driver").WithField("method", "unmount").Infof("volume %s is used by %d containers", volConfig.Name, d.mounts[volConfig.Name])
+	if d.mounts[req.Name] > 1 {
+		d.mounts[req.Name]--
+		log.WithField("command", "driver").WithField("method", "unmount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
 		return nil
 	}
 	// generate mount path
-	path := fmt.Sprintf("%s/%s", d.RootMount, volConfig.Name)
+	path := fmt.Sprintf("%s/%s", d.conf["rootmount"], req.Name)
 	// unmount volume
 	// generate command
 	cmd := fmt.Sprintf("umount %s", path)
 	log.WithField("command", "driver").WithField("method", "unmount").Infof("cmd: %s", cmd)
-	err = exec.Command("sh", "-c", cmd).Run()
+	err := exec.Command("sh", "-c", cmd).Run()
 	if err != nil {
 		switch e := err.(type) {
 		case *exec.ExitError:
@@ -458,8 +387,8 @@ func (d *S3fsDriver) Unmount(req *volume.UnmountRequest) error {
 			return fmt.Errorf("error executing the umount command: %s", err)
 		}
 	}
-	d.mounts[volConfig.Name]--
-	log.WithField("command", "driver").WithField("method", "unmount").Infof("volume %s is used by %d containers", volConfig.Name, d.mounts[volConfig.Name])
+	d.mounts[req.Name]--
+	log.WithField("command", "driver").WithField("method", "unmount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
 	return nil
 }
 

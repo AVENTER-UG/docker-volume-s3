@@ -3,20 +3,24 @@ package dockerVolumeS3
 import (
 	"os"
 	"strings"
+
+	logrus "github.com/sirupsen/logrus"
 )
 
 // Read
 func (d *S3fsDriver) configure() {
 
+	logrus.Info("test")
 	// set default confs:
 
 	d.conf["endpoint"] = "http://"
 	d.conf["region"] = "us-east-1"
-	d.conf["mount"] = "/mnt"
-	d.conf["replaceunderscores"] = true
-	d.conf["configbucket"] = "s3volconfig"
+	d.conf["rootmount"] = "/mnt"
+	d.conf["replaceunderscores"] = "true"
+	d.conf["configbucketname"] = "s3volconfig"
+	d.conf["usessl"] = "true"
 
-	d.loadEnvironmentS3ConfigVars
+	d.loadEnvironmentS3ConfigVars()
 
 }
 
@@ -30,6 +34,7 @@ func (d *S3fsDriver) loadEnvironmentS3ConfigVars() {
 		if strings.HasPrefix(pair[0], "S3_CONF_") {
 			configPair := strings.Split(pair[0], "S3_CONF_")
 			d.conf[strings.ToLower(configPair[1])] = pair[1]
+			logrus.Info(configPair[1] + "  " + pair[1])
 		}
 	}
 

@@ -1,4 +1,4 @@
-package dockerVolumesS3
+package dockerVolumeS3
 
 import (
 	"bytes"
