@@ -4,6 +4,7 @@ import (
 	"os"
 
 	dockerVolumeS3 "github.com/AVENTER-UG/docker-volume-s3/lib"
+	util "github.com/AVENTER-UG/util"
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/sirupsen/logrus"
 )
@@ -14,6 +15,7 @@ func main() {
 	dockerVolumeS3Version := os.Getenv("PLUGIN_VERSION")
 
 	logLevel := os.Getenv("LOG_LEVEL")
+	socketAddress := util.Getenv("S3_CONF_SOCKET", "/run/docker/plugins/s3.sock")
 
 	switch logLevel {
 	case "3":

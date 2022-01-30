@@ -17,8 +17,8 @@ func (d *S3fsDriver) configure() {
 	d.conf["region"] = "us-east-1"
 	d.conf["rootmount"] = "/mnt"
 	d.conf["replaceunderscores"] = "true"
-	d.conf["configbucketname"] = "s3volconfig"
 	d.conf["usessl"] = "true"
+	d.conf["mountdir"] = "/data"
 
 	d.loadEnvironmentS3ConfigVars()
 

@@ -111,9 +111,9 @@ func NewDriver() (*S3fsDriver, error) {
 	secretkey := driver.conf["secretkey"]
 	region := driver.conf["region"]
 	replaceunderscores := driver.conf["replaceunderscores"]
-	configbucketname := driver.conf["configbucketname"]
-	mount := driver.conf["mount"]
+	mount := driver.conf["rootmount"]
 	mount = strings.TrimRight(mount, "/")
+	driver.conf["rootmount"] = mount
 	defaults, err := parseOptions(driver.conf["options"])
 	if err != nil {
 		log.WithField("command", "driver").Errorf("could not parse options: %s", err)
@@ -136,7 +136,6 @@ func NewDriver() (*S3fsDriver, error) {
 	log.WithField("command", "driver").Infof("region: %s", region)
 	log.WithField("command", "driver").Infof("replace underscores: %v", replaceunderscores)
 	log.WithField("command", "driver").Infof("mount: %s", mount)
-	log.WithField("command", "driver").Infof("config bucket: %s", configbucketname)
 	log.WithField("command", "driver").Infof("default options: %s", defaults)
 	// get a s3 client
 	clt, err := minio.NewWithRegion(endpoint, accesskey, secretkey, usessl, region)
@@ -145,32 +144,6 @@ func NewDriver() (*S3fsDriver, error) {
 		return nil, fmt.Errorf("cannot get s3 client: %s", err)
 	}
 	driver.s3client = clt
-	err = driver.createBucket(configbucketname)
-	if err != nil {
-		log.WithField("command", "driver").Errorf("could check bucket '%s': %s", configbucketname, err)
-		return nil, fmt.Errorf("could not check bucket '%s': %s", configbucketname, err)
-	}
-	// check config object existance
-	_, err = clt.StatObject(configbucketname, configObject, minio.StatObjectOptions{})
-	if err != nil {
-		// create an empty config object
-		reader := strings.NewReader(emptyVolume)
-		err := driver.Lock(configbucketname, configObject)
-		if err != nil {
-			log.WithField("command", "driver").Errorf("could not lock config in %s: %s", configbucketname, err)
-			return nil, fmt.Errorf("could not lock config in %s: %s", configbucketname, err)
-		}
-		_, err = clt.PutObject(configbucketname, configObject, reader, reader.Size(), minio.PutObjectOptions{})
-		if err != nil {
-			log.WithField("command", "driver").Errorf("could not create config in %s: %s", configbucketname, err)
-			return nil, fmt.Errorf("could not create config in %s: %s", configbucketname, err)
-		}
-		err = driver.UnLock(configbucketname, configObject)
-		if err != nil {
-			log.WithField("command", "driver").Errorf("could not unlock config in %s: %s", configbucketname, err)
-			return nil, fmt.Errorf("could not unlock config in %s: %s", configbucketname, err)
-		}
-	}
 	// return the driver
 	return driver, nil
 }
@@ -350,7 +323,7 @@ func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, err
 	}
 	d.mounts[req.Name]++
 	log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
-	return &volume.MountResponse{Mountpoint: path}, nil
+	return &volume.MountResponse{Mountpoint: path + d.conf["mountdir"]}, nil
 }
 
 //Unmount unmounts a volume
