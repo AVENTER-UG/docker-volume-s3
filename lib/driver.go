@@ -320,6 +320,21 @@ func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, err
 			log.WithField("command", "driver").WithField("method", "mount").Errorf("error executing the mount command: %s", err)
 			return nil, fmt.Errorf("error executing the mount command: %s", err)
 		}
+	} else {
+		// if mountdir is set but not exist, create it
+		if d.conf["mountdir"] != "" {
+			_, err = os.Stat(path + d.conf["mountdir"])
+			if err != nil && !os.IsNotExist(err) {
+				log.WithField("command", "driver").WithField("method", "mount").Errorf("could not get mount path %s %s: %s", path, d.conf["mountdir"], err)
+				return nil, fmt.Errorf("could not get mount path %s %s: %s", path, d.conf["mountdir"], err)
+			}
+			// create path
+			err := os.Mkdir(path+d.conf["mountdir"], 0770)
+			if err != nil {
+				log.WithField("command", "driver").WithField("method", "mount").Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
+				return nil, fmt.Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
+			}
+		}
 	}
 	d.mounts[req.Name]++
 	log.WithField("command", "driver").WithField("method", "mount").Infof("volume %s is used by %d containers", req.Name, d.mounts[req.Name])
