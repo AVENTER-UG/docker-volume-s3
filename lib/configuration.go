@@ -34,7 +34,7 @@ func (d *S3fsDriver) loadEnvironmentS3ConfigVars() {
 		if strings.HasPrefix(pair[0], "S3_CONF_") {
 			configPair := strings.Split(pair[0], "S3_CONF_")
 			d.conf[strings.ToLower(configPair[1])] = pair[1]
-			logrus.Info(configPair[1] + "  " + pair[1])
+			logrus.Debug(configPair[1] + "  " + pair[1])
 		}
 	}
 

@@ -329,10 +329,12 @@ func (d *S3fsDriver) Mount(req *volume.MountRequest) (*volume.MountResponse, err
 				return nil, fmt.Errorf("could not get mount path %s %s: %s", path, d.conf["mountdir"], err)
 			}
 			// create path
-			err := os.Mkdir(path+d.conf["mountdir"], 0770)
-			if err != nil {
-				log.WithField("command", "driver").WithField("method", "mount").Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
-				return nil, fmt.Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
+			if os.IsNotExist(err) {
+				err := os.Mkdir(path+d.conf["mountdir"], 0770)
+				if err != nil {
+					log.WithField("command", "driver").WithField("method", "mount").Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
+					return nil, fmt.Errorf("could not create mount path %s %s: %s", path, d.conf["mountdir"], err)
+				}
 			}
 		}
 	}
