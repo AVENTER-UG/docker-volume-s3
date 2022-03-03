@@ -132,7 +132,6 @@ func NewDriver() (*S3fsDriver, error) {
 	defaults["use_path_request_style"] = "true"
 	log.WithField("command", "driver").Infof("endpoint: %s", endpoint)
 	log.WithField("command", "driver").Infof("use ssl: %v", usessl)
-	log.WithField("command", "driver").Infof("access key: %s", accesskey)
 	log.WithField("command", "driver").Infof("region: %s", region)
 	log.WithField("command", "driver").Infof("replace underscores: %v", replaceunderscores)
 	log.WithField("command", "driver").Infof("mount: %s", mount)
