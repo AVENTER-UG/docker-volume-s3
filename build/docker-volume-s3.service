@@ -1,0 +1,12 @@
+[Unit]
+Description=AVENTER Docker Volume S3
+After=docker.service
+
+[Service]
+EnvironmentFile=/etc/docker-volume/s3.env
+ExecStart=/usr/bin/docker-volume-s3
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

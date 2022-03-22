@@ -11,7 +11,7 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-docker-volume-s3
+build/docker-volume-s3
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
