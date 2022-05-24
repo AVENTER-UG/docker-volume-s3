@@ -4,12 +4,14 @@
 PROJECTNAME=docker-volume-s3
 DESCRIPTION=Docker volume driver for S3
 UNAME_M=`uname -m`
-TAG=`git describe`
+TAG=$(shell git describe)
 BRANCH=`git rev-parse --abbrev-ref HEAD`
 BUILDDATE=`date -u +%Y-%m-%dT%H:%M:%SZ`
 LICENSE=MIT
+VERSION_TU=$(subst -, ,$(TAG:v%=%))
+BUILD_VERSION=$(word 1,$(VERSION_TU))
 
-FPM_OPTS= -s dir -n $(PROJECTNAME) -v $(TAG) \
+FPM_OPTS= -s dir -n $(PROJECTNAME) -v $(BUILD_VERSION) \
 	--architecture $(UNAME_M) \
 	--url "https://www.aventer.biz" \
 	--license $(LICENSE) \
