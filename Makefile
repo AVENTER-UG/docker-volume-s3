@@ -55,4 +55,9 @@ rpm: build-bin
 	@cp build/s3.env /tmp/toor/etc/docker-volume/s3.env
 	@fpm -t rpm -C /tmp/toor/ --config-files etc $(FPM_OPTS) $(CONTENTS)
 
+
+sboom:
+	syft dir:. > sbom.txt
+	syft dir:. -o json > sbom.json
+
 all: build
