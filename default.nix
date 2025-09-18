@@ -1,10 +1,26 @@
-{ pkgs ? import <nixpkgs> { } }:
+with import <nixpkgs> {};
 
-with pkgs;
+stdenv.mkDerivation {
+name = "go-env";
 
-mkShell {
-  buildInputs = [
+buildInputs = [
     go
-  ];
+    syft
+    grype
+    docker
+    trivy
+];
+
+SOURCE_DATE_EPOCH = 315532800;
+PROJDIR = "${toString ./.}";
+
+shellHook = ''
+    export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib"
+    export PATH=/tmp/bin:$PATH
+    export GOTMPDIR=/tmp/go
+    mkdir /tmp/go
+    mkdir /tmp/bin
+    '';
 }
+
 

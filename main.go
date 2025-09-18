@@ -4,7 +4,7 @@ import (
 	"os"
 
 	dockerVolumeS3 "github.com/AVENTER-UG/docker-volume-s3/lib"
-	util "github.com/AVENTER-UG/util"
+	util "github.com/AVENTER-UG/util/util"
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/sirupsen/logrus"
 )
