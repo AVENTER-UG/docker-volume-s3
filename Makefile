@@ -4,7 +4,7 @@
 PROJECTNAME=docker-volume-s3
 DESCRIPTION=Docker volume driver for S3
 UNAME_M=`uname -m`
-TAG=v0.1.1
+TAG=v0.1.3
 BRANCH=`git rev-parse --abbrev-ref HEAD`
 BUILDDATE=`date -u +%Y-%m-%dT%H:%M:%SZ`
 LICENSE=MIT
