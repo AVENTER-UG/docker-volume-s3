@@ -39,5 +39,4 @@ func main() {
 	h := volume.NewHandler(volDriver)
 	logrus.Infof("plugin(s3) version(%s) started with log level(%s) attending socket(%s)", dockerVolumeS3Version, logLevel, socketAddress)
 	logrus.Error(h.ServeUnix(socketAddress, 0))
-	logrus.Error(h.ServeUnix(socketAddress, 0))
 }

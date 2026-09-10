@@ -8,6 +8,14 @@ Note: This is a fork and improved version of https://github.com/cblomart/s3vol
 
 ## Changelog
 
+### v0.2.0
+
+- CHANGE: Migration to clusterd-go and the updated ClusterD API (it's still compatible to Apache Mesos).
+
+### v0.1.3
+
+- SECURITY: update go modules
+
 ### v0.1.1
 
 - SECURITY: update go modules
